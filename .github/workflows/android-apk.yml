@@ -1,0 +1,72 @@
+name: Build Daily Clock APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Daily-Clock-Android-Source.zip'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Build Android Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Unpack Daily Clock source ZIP
+        run: |
+          test -f Daily-Clock-Android-Source.zip
+          mkdir -p unpacked
+          unzip -q Daily-Clock-Android-Source.zip -d unpacked
+          PROJECT_DIR="$(find unpacked -name package.json -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Could not find package.json in uploaded source ZIP" >&2
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Using project directory: $PROJECT_DIR"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install npm dependencies
+        run: cd "$PROJECT_DIR" && npm install
+
+      - name: Build web app
+        run: cd "$PROJECT_DIR" && npm run build
+
+      - name: Create Android project
+        run: cd "$PROJECT_DIR" && npx cap add android
+
+      - name: Sync Capacitor Android
+        run: cd "$PROJECT_DIR" && npx cap sync android
+
+      - name: Build debug APK
+        run: cd "$PROJECT_DIR/android" && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daily-Clock-debug-apk
+          path: unpacked/**/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
