@@ -69,11 +69,23 @@ jobs:
           if count != 1:
               raise SystemExit(f"Expected exactly one stats-tab template handler, found {count}; refusing to modify source copy.")
           app.write_text(source.replace(old, new, 1), encoding="utf-8")
-          print("Applied the CI-only template fix to the extracted copy; the original ZIP and repository source remain unchanged.")
+          print("Applied the CI-only template fix to the extracted copy; original ZIP and repository source remain unchanged.")
           PY
 
+      - name: Create explicit Vue Vite config for CI
+        run: |
+          cat > "$PROJECT_DIR/vite.ci.config.mjs" <<'EOF'
+          import { defineConfig } from 'vite'
+          import vue from '@vitejs/plugin-vue'
+
+          export default defineConfig({
+            plugins: [vue()],
+            base: './'
+          })
+          EOF
+
       - name: Build web app
-        run: cd "$PROJECT_DIR" && npm run build
+        run: cd "$PROJECT_DIR" && npx vue-tsc -b && npx vite build --config ./vite.ci.config.mjs
 
       - name: Create Android project
         run: cd "$PROJECT_DIR" && npx cap add android
