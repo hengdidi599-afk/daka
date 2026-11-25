@@ -1,4 +1,4 @@
-name: Build Daily Clock APK (source-preserving CI fix)
+name: Build Daily Clock APK
 
 on:
   workflow_dispatch:
@@ -56,36 +56,24 @@ jobs:
       - name: Install npm dependencies
         run: cd "$PROJECT_DIR" && npm install
 
-      - name: Prepare CI-only Vue template compatibility config
+      - name: Apply CI-only Vue template compatibility fix to extracted copy
         run: |
-          cat > "$PROJECT_DIR/vite.ci.config.mjs" <<'EOF'
-          import { mergeConfig } from 'vite'
-          import baseConfig from './vite.config.ts'
+          python3 - <<'PY'
+          from pathlib import Path
 
-          let patchedTemplate = false
+          app = Path("unpacked/src/App.vue")
+          source = app.read_text(encoding="utf-8")
+          old = '@click="tab=\'stats\';setTimeout(drawChart,80)"'
+          new = '@click="tab=\'stats\'"'
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one stats-tab template handler, found {count}; refusing to modify source copy.")
+          app.write_text(source.replace(old, new, 1), encoding="utf-8")
+          print("Applied the CI-only template fix to the extracted copy; the original ZIP and repository source remain unchanged.")
+          PY
 
-          export default mergeConfig(baseConfig, {
-            plugins: [{
-              name: 'daily-clock-ci-settimeout-compat',
-              enforce: 'post',
-              transform(code, id) {
-                if (id.includes('App.vue')) {
-                  const fixed = code.replaceAll('_ctx.setTimeout(', 'window.setTimeout(')
-                  if (fixed !== code) patchedTemplate = true
-                  return fixed
-                }
-              },
-              closeBundle() {
-                if (!patchedTemplate) {
-                  this.error('Expected App.vue setTimeout template expression was not found; refusing to produce an unpatched APK.')
-                }
-              }
-            }]
-          })
-          EOF
-
-      - name: Build web app (CI compatibility transform; original source remains unchanged)
-        run: cd "$PROJECT_DIR" && npx vite build --config vite.ci.config.mjs
+      - name: Build web app
+        run: cd "$PROJECT_DIR" && npm run build
 
       - name: Create Android project
         run: cd "$PROJECT_DIR" && npx cap add android
